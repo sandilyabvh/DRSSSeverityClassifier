@@ -54,7 +54,7 @@ class OCTDataset(Dataset):
     def __getitem__(self, index):
         #print("test"+str(index))
         img, target = Image.open(self.root+self.path_list[index]), self._labels[index]
-
+        #print("Path for image opened using __getitem__:"+str(self.root+self.path_list[index]))
         if self.transform is not None:
             img = self.transform(img)
         
