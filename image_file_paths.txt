@@ -1,0 +1,8 @@
+/storage/home/hpaceice1/shared-classes/materials/ece8803fml//Prime_FULL/02-031/W100/OD/0.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-002/W40/OD/3.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-002/W4/OD/10.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-013/W92/OD/35.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-026/W92/OD/35.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-026/W0/OD/30.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-020/W0/OS/13.tif
+//storage/home/hpaceice1/shared-classes/materials/ece8803fml/Prime_FULL/01-026/W0/OD/31.tif
