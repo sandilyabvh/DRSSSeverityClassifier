@@ -13,11 +13,15 @@ from torch.utils.data import DataLoader
 from pprint import pprint
 import numpy as np
 from sklearn.svm import SVC
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import balanced_accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 import cv2
 from sklearn.model_selection import GridSearchCV
-from torchvision.models import resnet18
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 
 LABELS_Severity = {35: 0,
                    43: 0,
@@ -27,49 +31,40 @@ LABELS_Severity = {35: 0,
                    65: 2,
                    71: 2,
                    85: 2}
-                   
-class ResNetAutoencoder(nn.Module):
-    def __init__(self):
-        super(ResNetAutoencoder, self).__init__()
-        resnet = resnet18(pretrained=True)
-        
-        # Change the first convolutional layer to accept 1 channel input
-        resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        
-        self.encoder = nn.Sequential(*list(resnet.children())[:-1])
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-    
-    def encode(self, x):
-        return self.encoder(x).view(x.size(0), -1)
-        
+
+"""     
 mean = (.1706)
 std = (.2112)
 normalize = transforms.Normalize(mean=mean, std=std)
 train_transform = transforms.Compose([
-    transforms.Resize(size=(224,224)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.ToTensor(),
+    #transforms.Grayscale(num_output_channels=1), #can be one if not using any pretrained resnet
+    transforms.Resize(size=(28, 28)),
+    #transforms.ToTensor(),
     normalize,
 ])
 test_transform = transforms.Compose([
-    transforms.Resize(size=(224,224)),
-    transforms.ToTensor(),
+    #transforms.Grayscale(num_output_channels=1), #can be one if not using any pretrained resnet
+    transforms.Resize(size=(28, 28)),
+    #transforms.ToTensor(),
     normalize,
+])
+"""
+
+def normalize_np(image, mean, std):
+    grayscale_image = np.array(image.convert('L'))
+    return (grayscale_image - mean) / std
+
+mean = 0.1706
+std = 0.2112
+target_size = (28, 28) #(112, 112)
+train_transform = transforms.Compose([
+    transforms.Resize(size=target_size),
+    transforms.Lambda(lambda x: normalize_np(x, mean, std)),
+])
+
+test_transform = transforms.Compose([
+    transforms.Resize(size=target_size),
+    transforms.Lambda(lambda x: normalize_np(x, mean, std)),
 ])
 
 class OCTDataset(Dataset):
@@ -89,7 +84,7 @@ class OCTDataset(Dataset):
         self._labels = self.annot['Severity_Label'].values
         assert len(self.path_list) == len(self._labels)
         # idx_each_class = [[] for i in range(self.nb_classes)]
-        #max_samples = int(len(self._labels)/4) #32 #int(len(self._labels)/2)
+        max_samples = int(len(self._labels)/4) #32 #int(len(self._labels)/2)
         #print(max_samples)
         self.max_samples = max_samples
         pprint(self.annot.keys())
@@ -116,109 +111,68 @@ def parse_args():
     parser.add_argument('--data_root', type = str, default = '')
     return parser.parse_args()
 
-def count_class_distribution(dataset):
-    class_counts = np.zeros(len(np.unique(list(LABELS_Severity.values()))))
-    for _, label in dataset:
-        class_counts[label] += 1
-    return class_counts
-    
+
 if __name__ == '__main__':
     args = parse_args()
     trainset = OCTDataset(args, 'train', transform=train_transform)
     testset = OCTDataset(args, 'test', transform=test_transform)
 
-    #set up the device (GPU or CPU)
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print('Found device')
+    print('Found device', device)
 
-    #feature extractor
-    # Step 2: Train the autoencoder on your dataset
-    autoencoder = ResNetAutoencoder().to(device)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(autoencoder.parameters(), lr=0.001)
+    print('len(trainset):'+str(len(trainset)))
+    print('len(testset):'+str(len(trainset)))   
+    # Access data and labels directly from trainset and testset
+    X_train = np.array([x for x, _ in trainset])
+    print('Computed X_train')
+    y_train = np.array([y for _, y in trainset])
+    print('Computed y_train')
+    X_test = np.array([x for x, _ in testset])
+    print('Computed X_test')
+    y_test = np.array([y for _, y in testset])
+    print('Computed y_test')
+    print("Loaded the train and test datasets as NumPy arrays")
 
-    # Adjust the batch size according to your available resources
-    train_loader = DataLoader(trainset, batch_size=32, shuffle=True)
-    num_epochs = 100
-    
-    #dataset distribution:    
-    #train_class_distribution = count_class_distribution(trainset)
-    #test_class_distribution = count_class_distribution(testset)
-    #print("Trainset class distribution:", train_class_distribution)
-    #print("Testset class distribution:", test_class_distribution)
-    for epoch in range(num_epochs):
-        for data in train_loader:
-            img, _ = data
-            img = img.to(device)
-            output = autoencoder(img)
-            loss = criterion(output, img)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-    
-    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
-    
-    with torch.no_grad():
-        X_train_encoded = autoencoder.encode(torch.tensor(X_train.reshape(-1, 3, 224, 224), device=device).float()).cpu().numpy()
-        X_test_encoded = autoencoder.encode(torch.tensor(X_test.reshape(-1, 3, 224, 224), device=device).float()).cpu().numpy()
-
-    """
-    # Convert the train and test datasets to NumPy arrays
-    X_train, y_train = zip(*trainset)
-    X_test, y_test = zip(*testset)
-    # Extract features from the train and test sets using the feature extractor
-    X_train_features = []
-    for img in X_train:
-        features = feature_extractor(torch.Tensor(img).unsqueeze(0)).detach().numpy().flatten()
-        X_train_features.append(features)
-    X_train_features = np.array(X_train_features)
-
-    X_test_features = []
-    for img in X_test:
-        features = feature_extractor(torch.Tensor(img).unsqueeze(0)).detach().numpy().flatten()
-        X_test_features.append(features)
-    X_test_features = np.array(X_test_features)
-    
-    print("Converted the train and test datasets to NumPy arrays")
-    
     # Reshape the input arrays
-    X_train = X_train_features.reshape(X_train_features.shape[0], -1)
-    X_test = X_test_features.reshape(X_test_features.shape[0], -1)
+    X_train = X_train.reshape(X_train.shape[0], -1)
+    X_test = X_test.reshape(X_test.shape[0], -1)
+    print('shape of X_train:'+str(X_train.shape))
+    print('shape of X_test:'+str(X_test.shape))
+
+    # Initialize PCA with the desired number of components
+    n_components = int(X_train.shape[1]/4)  # Choose the number of principal components to keep (should be smaller than original dimension)
+    pca = PCA(n_components=n_components)
+
+    # Fit PCA on the training data and transform both training and test data
+    X_train_pca = pca.fit_transform(X_train)
+    X_test_pca = pca.transform(X_test)
+
+    print('shape of X_train_pca:'+str(X_train_pca.shape))
+    print('shape of X_test_pca:'+str(X_test_pca.shape))
+    
+    """
+    iris = datasets.load_iris()
+    X = iris.data
+    y = iris.target
+    print('len of iris dataset:'+str(len(iris)))
+    print('shape of X:'+str(X.shape))
+    # Split the dataset into train and test subsets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    print('len of X_train:'+str(len(X_train)))
     """
     
-    # Initialize the SVC model with the RBF kernel
-    #-------without grid search-----------
-    #model = SVC(kernel='rbf', C=1, gamma='scale').to(device)
-    # Train the model
-    #model.fit(X_train, y_train)
-    # Make predictions on the train and test sets
-    #train_pred = model.predict(X_train)
-    #test_pred = model.predict(X_test)
-    
-    # Training the model
-    # Define the parameter grid for the grid search
-    #param_grid = {'C': [0.1, 1, 10, 100], 'gamma': ['scale', 1e-3, 1e-4]}
-    param_grid = {'C': [10], 'gamma': [1e-4]}
-    # Initialize the GridSearchCV object
-    grid = GridSearchCV(SVC(kernel='rbf'), param_grid, verbose=3, scoring='balanced_accuracy', n_jobs=-1, cv=5)
-    print("parameter grid for the grid search computation complete")
-    # Fit the grid search object to the data
-    #grid.fit(X_train, y_train)
-    grid.fit(X_train_encoded, y_train)
-    print("fit complete")
-    # Print the best parameters found by grid search
-    print("Best parameters found by grid search:", grid.best_params_)
-    # Make predictions on the train and test sets using the best estimator
-    train_pred = grid.best_estimator_.predict(X_train_encoded)
-    test_pred = grid.best_estimator_.predict(X_test_encoded)
-    print("Prediction complete")
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_pca)
+    X_test_scaled = scaler.transform(X_test_pca)
 
-    # Calculate the evaluation metrics
-    train_balanced_accuracy = balanced_accuracy_score(y_train, train_pred)
-    train_f1_score = f1_score(y_train, train_pred, average='weighted')
+    svm = SVC(kernel='linear', C=1, gamma='scale', random_state=42)
+    ovr_classifier = OneVsRestClassifier(svm)
+    ovr_classifier.fit(X_train_scaled, y_train)
+    print("Model fit complete")
+
+    test_pred = ovr_classifier.predict(X_test_scaled)
+    print("Prediction complete")
 
     test_balanced_accuracy = balanced_accuracy_score(y_test, test_pred)
     test_f1_score = f1_score(y_test, test_pred, average='weighted')
-
-    print('\nTraining Balanced Accuracy: {:0.4f} | Training F1 Score: {:0.4f}'.format(train_balanced_accuracy, train_f1_score))
-    print('Test Balanced Accuracy: {:0.4f} | Test F1 Score: {:0.4f}'.format(test_balanced_accuracy, test_f1_score))
+    print('\nTest Balanced Accuracy: {:0.4f} | Test F1 Score: {:0.4f}'.format(test_balanced_accuracy, test_f1_score))
