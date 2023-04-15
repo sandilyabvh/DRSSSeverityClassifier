@@ -17,7 +17,7 @@ from sklearn.metrics import balanced_accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 import cv2
 from sklearn.model_selection import GridSearchCV
-from torchvision.models import resnet50
+from torchvision.models import resnet18
 
 LABELS_Severity = {35: 0,
                    43: 0,
@@ -28,44 +28,45 @@ LABELS_Severity = {35: 0,
                    71: 2,
                    85: 2}
                    
-class ResNetGray(nn.Module):
+class ResNetAutoencoder(nn.Module):
     def __init__(self):
-        super(ResNetGray, self).__init__()
-        resnet = resnet50() #pretrained=True)
-        # Change the first conv layer to accept 1 channel instead of 3
-        resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.features = nn.Sequential(*list(resnet.children())[:-1])
-
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1)
-        return x
+        super(ResNetAutoencoder, self).__init__()
+        resnet = resnet18(pretrained=True)
         
-class ConvertToHue(transforms.Lambda):
-    def __init__(self):
-        super().__init__(self.convert_to_hue)
-
-    def convert_to_hue(self, img):
-        img = np.array(img)
-        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-        hue = hsv[:, :, 0]
-        return hue
+        # Change the first convolutional layer to accept 1 channel input
+        resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        
+        self.encoder = nn.Sequential(*list(resnet.children())[:-1])
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+    
+    def encode(self, x):
+        return self.encoder(x).view(x.size(0), -1)
         
 mean = (.1706)
 std = (.2112)
 normalize = transforms.Normalize(mean=mean, std=std)
 train_transform = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
     transforms.Resize(size=(224,224)),
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
-    transforms.RandomCrop((224,224), padding=4),
-    ConvertToHue(),
     transforms.ToTensor(),
     normalize,
 ])
 test_transform = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
     transforms.Resize(size=(224,224)),
     transforms.ToTensor(),
     normalize,
@@ -88,7 +89,7 @@ class OCTDataset(Dataset):
         self._labels = self.annot['Severity_Label'].values
         assert len(self.path_list) == len(self._labels)
         # idx_each_class = [[] for i in range(self.nb_classes)]
-        max_samples = int(len(self._labels)/4) #32 #int(len(self._labels)/2)
+        #max_samples = int(len(self._labels)/4) #32 #int(len(self._labels)/2)
         #print(max_samples)
         self.max_samples = max_samples
         pprint(self.annot.keys())
@@ -131,18 +132,37 @@ if __name__ == '__main__':
     print('Found device')
 
     #feature extractor
-    # Load the pre-trained ResNet50 CNN model
-    cnn_model = ResNetGray() #resnet50()#pretrained=True)
+    # Step 2: Train the autoencoder on your dataset
+    autoencoder = ResNetAutoencoder().to(device)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(autoencoder.parameters(), lr=0.001)
 
-    # Remove the last fully connected layer
-    feature_extractor = nn.Sequential(*list(cnn_model.children())[:-1])
+    # Adjust the batch size according to your available resources
+    train_loader = DataLoader(trainset, batch_size=32, shuffle=True)
+    num_epochs = 100
     
     #dataset distribution:    
     #train_class_distribution = count_class_distribution(trainset)
     #test_class_distribution = count_class_distribution(testset)
     #print("Trainset class distribution:", train_class_distribution)
-    #print("Testset class distribution:", test_class_distribution) 
-            
+    #print("Testset class distribution:", test_class_distribution)
+    for epoch in range(num_epochs):
+        for data in train_loader:
+            img, _ = data
+            img = img.to(device)
+            output = autoencoder(img)
+            loss = criterion(output, img)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+    
+    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
+    
+    with torch.no_grad():
+        X_train_encoded = autoencoder.encode(torch.tensor(X_train.reshape(-1, 3, 224, 224), device=device).float()).cpu().numpy()
+        X_test_encoded = autoencoder.encode(torch.tensor(X_test.reshape(-1, 3, 224, 224), device=device).float()).cpu().numpy()
+
+    """
     # Convert the train and test datasets to NumPy arrays
     X_train, y_train = zip(*trainset)
     X_test, y_test = zip(*testset)
@@ -164,7 +184,8 @@ if __name__ == '__main__':
     # Reshape the input arrays
     X_train = X_train_features.reshape(X_train_features.shape[0], -1)
     X_test = X_test_features.reshape(X_test_features.shape[0], -1)
-
+    """
+    
     # Initialize the SVC model with the RBF kernel
     #-------without grid search-----------
     #model = SVC(kernel='rbf', C=1, gamma='scale').to(device)
@@ -182,13 +203,14 @@ if __name__ == '__main__':
     grid = GridSearchCV(SVC(kernel='rbf'), param_grid, verbose=3, scoring='balanced_accuracy', n_jobs=-1, cv=5)
     print("parameter grid for the grid search computation complete")
     # Fit the grid search object to the data
-    grid.fit(X_train, y_train)
+    #grid.fit(X_train, y_train)
+    grid.fit(X_train_encoded, y_train)
     print("fit complete")
     # Print the best parameters found by grid search
     print("Best parameters found by grid search:", grid.best_params_)
     # Make predictions on the train and test sets using the best estimator
-    train_pred = grid.best_estimator_.predict(X_train)
-    test_pred = grid.best_estimator_.predict(X_test)
+    train_pred = grid.best_estimator_.predict(X_train_encoded)
+    test_pred = grid.best_estimator_.predict(X_test_encoded)
     print("Prediction complete")
 
     # Calculate the evaluation metrics
