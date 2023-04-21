@@ -13,3 +13,20 @@ Running the Jupyter notebooks is self explanatory with relavant comments present
 The Case viewer GUI can be launched using the below steps:
 1. conda activate ece8803
 2. python3 <repo path>/cases_viewer.py --data_root <parent directory containing prime test and train csvs> --annot_train_prime <path to df_prime_train.csv> --annot_test_prime <path to df_prime_test.csv>
+
+Directory Structure:
+   |
+   | -- Explainability: This directory contains relevant heat maps and Jupyter notebook to generate heat maps.
+   | -- ProofRuns: This directory contains screencapture proofs at the time of running the classifier.
+   | -- Uploading screen captures at the time of running classifier successfull.
+   | -- 3DCNN.ipynb: Experimenting with a 3D-CNN implemented bycombining a ConvLSTM and a 2D-U-N…
+   | -- Blending.ipynb: Contains the OCTDataset class that internally handles the blending logic. We run this OCTDataset class over the train and test data set.
+        This is the method we follow when we have to generated a pre-processed image for each sample within a Volutme.
+   | -- case_viewer.py: This is a GUI that helps in terms of visualization. One can scej
+   | -- KNN.ipynb: Contains the code that initially reduces dimentions, flattens and later passes the inputs through KNN.
+   | -- SVM.ipynb: Contains the code to the RBF Sampler and the SGDC based sVM. The RBF Sampler has contUNet-CNN.ipynb
+   | -- NaiveBayes.ipynb: Contains the code to run Naive Bayes. We have to initialize the transforms first, run the OCTDataset and OCTCLassifier.
+   | -- UNet-CNN.ipynb: Contains the U-Net classifier and dataset wrapper classes. To run the classifier, one must first train it on the train set after performing data augmentation like random rotations. Finally the model is run on the test set.
+   | -- image_file_paths.txt: A text file listing the paths of unique images for the case_viewer.py to show when it is run. 
+   
+   
