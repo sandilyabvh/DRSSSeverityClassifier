@@ -7,3 +7,9 @@ The project aims to develop a Diabetic Retinopathy Severity Scale (DRSS) classif
 
 
 ![UNetHeatMap_01_027_W52_OS_cn_final](https://user-images.githubusercontent.com/66162811/233683728-633b73d6-5edd-4b7b-89d7-7f2e0bba5ff0.png)
+
+Running the Jupyter notebooks is self explanatory with relavant comments present.
+
+The Case viewer GUI can be launched using the below steps:
+1. conda activate ece8803
+2. python3 <repo path>/cases_viewer.py --data_root <parent directory containing prime test and train csvs> --annot_train_prime <path to df_prime_train.csv> --annot_test_prime <path to df_prime_test.csv>
