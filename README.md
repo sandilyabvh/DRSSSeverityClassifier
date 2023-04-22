@@ -77,4 +77,7 @@ Supported features: Canny edge, LaplacianPyramidFusion, Alpha blending, Sobel op
 
 Python notebooks of all machine learning models are written in a modular fashion and are self explanatory with comment, you can just upload them into your colab and start running code blocks to obtain the result. In case of UNet-CNN if you wish to reproduce the best result we have achieved so far, you can upload the `https://drive.google.com/file/d/1lYCOMhJc7ixHgDaTeYXCfGzsPH2qsUF8/view?usp=sharing` file to your colab session and reuse them.
 
+## Presentation
+https://drive.google.com/file/d/1MPEJVVdHZ8d3Cn1gICUw8_39dCMwMtUU/view?usp=share_link
+
    
